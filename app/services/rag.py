@@ -10,7 +10,6 @@ from app.db.models import (
 )
 from app.services.embedding import generate_embeddings
 from app.services.llm import stream_generate
-from app.services.reranker import rerank
 
 
 def retrieve_candidates(
@@ -145,11 +144,8 @@ def stream_rag_answer(
         db,
     )
 
-    ranked_chunks = rerank(
-        question=question,
-        candidates=candidates,
-        top_k=settings.top_k_final,
-    )
+    # Hasil sudah diurutkan berdasarkan cosine distance dari pgvector.
+    ranked_chunks = candidates[: settings.top_k_final]
 
     history = get_history(
         conversation_id,
