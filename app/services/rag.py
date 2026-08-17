@@ -10,13 +10,14 @@ from app.db.models import (
 )
 from app.services.embedding import generate_embeddings
 from app.services.llm import stream_generate
+from app.services.reranker import rerank
 
 
 def retrieve_candidates(
     question: str,
     db: Session,
 ):
-    query_embedding = generate_embeddings(question)
+    query_embedding = generate_embeddings([question])[0]
 
     distance = (
         DocumentChunk.embedding.cosine_distance(
@@ -144,11 +145,11 @@ def stream_rag_answer(
         db,
     )
 
-    # Vector search sudah mengurutkan hasil
-    # berdasarkan cosine distance.
-    ranked_chunks = candidates[
-        : settings.top_k_final
-    ]
+    ranked_chunks = rerank(
+        question=question,
+        candidates=candidates,
+        top_k=settings.top_k_final,
+    )
 
     history = get_history(
         conversation_id,
