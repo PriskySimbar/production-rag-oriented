@@ -1,23 +1,29 @@
-from functools import lru_cache
-
-from sentence_transformers import SentenceTransformer
+from google import genai
 
 from app.core.config import settings
 
 
-@lru_cache(maxsize=1)
-def get_embedding_model():
-    return SentenceTransformer(
-        settings.embedding_model
-    )
+client = genai.Client(
+    api_key=settings.gemini_api_key
+)
 
 
-def generate_embedding(text: str) -> list[float]:
-    model = get_embedding_model()
+def generate_embeddings(
+    texts: list[str],
+) -> list[list[float]]:
 
-    embedding = model.encode(
-        text,
-        normalize_embeddings=True,
-    )
+    if not texts:
+        return []
 
-    return embedding.tolist()
+    response = client.models.embed_content(
+    model="gemini-embedding-001",
+    contents=texts,
+    config={
+        "output_dimensionality": 768
+    },
+)
+
+    return [
+        embedding.values
+        for embedding in response.embeddings
+    ]

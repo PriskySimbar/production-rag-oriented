@@ -8,18 +8,15 @@ from app.db.models import (
     DocumentChunk,
     Message,
 )
-from app.services.embedding import generate_embedding
+from app.services.embedding import generate_embeddings
 from app.services.llm import stream_generate
-from app.services.reranker import rerank
 
 
 def retrieve_candidates(
     question: str,
     db: Session,
 ):
-    query_embedding = generate_embedding(
-        question
-    )
+    query_embedding = generate_embeddings(question)
 
     distance = (
         DocumentChunk.embedding.cosine_distance(
@@ -35,34 +32,28 @@ def retrieve_candidates(
         )
         .join(
             Document,
-            Document.id
-            == DocumentChunk.document_id,
+            Document.id == DocumentChunk.document_id,
         )
         .order_by(distance)
-        .limit(
-            settings.top_k_retrieval
-        )
+        .limit(settings.top_k_retrieval)
     )
 
-    rows = db.execute(
-        statement
-    ).all()
+    rows = db.execute(statement).all()
 
     candidates = []
 
     for chunk, filename, distance in rows:
-
-        candidates.append({
-            "chunk_id": chunk.id,
-            "document_id": chunk.document_id,
-            "filename": filename,
-            "content": chunk.content,
-            "page_number": chunk.page_number,
-            "chunk_index": chunk.chunk_index,
-            "vector_distance": float(
-                distance
-            ),
-        })
+        candidates.append(
+            {
+                "chunk_id": chunk.id,
+                "document_id": chunk.document_id,
+                "filename": filename,
+                "content": chunk.content,
+                "page_number": chunk.page_number,
+                "chunk_index": chunk.chunk_index,
+                "vector_distance": float(distance),
+            }
+        )
 
     return candidates
 
@@ -74,8 +65,7 @@ def get_history(
     messages = db.scalars(
         select(Message)
         .where(
-            Message.conversation_id
-            == conversation_id
+            Message.conversation_id == conversation_id
         )
         .order_by(Message.created_at)
     ).all()
@@ -96,7 +86,6 @@ def build_prompt(
     context_parts = []
 
     for i, chunk in enumerate(chunks, start=1):
-
         context_parts.append(
             f"""
 [Document {i}]
@@ -108,9 +97,7 @@ Chunk: {chunk["chunk_index"]}
 """
         )
 
-    context = "\n".join(
-        context_parts
-    )
+    context = "\n".join(context_parts)
 
     return f"""
 You are a document-grounded AI assistant.
@@ -152,17 +139,16 @@ def stream_rag_answer(
     conversation_id: str,
     db: Session,
 ):
-
     candidates = retrieve_candidates(
         question,
         db,
     )
 
-    ranked_chunks = rerank(
-        question=question,
-        candidates=candidates,
-        top_k=settings.top_k_final,
-    )
+    # Vector search sudah mengurutkan hasil
+    # berdasarkan cosine distance.
+    ranked_chunks = candidates[
+        : settings.top_k_final
+    ]
 
     history = get_history(
         conversation_id,
@@ -178,18 +164,12 @@ def stream_rag_answer(
     full_response = ""
 
     try:
-
-        for token in stream_generate(
-            prompt
-        ):
+        for token in stream_generate(prompt):
             full_response += token
-
             yield token
 
     except Exception:
-
         db.rollback()
-
         raise
 
     assistant_message = Message(
@@ -199,7 +179,6 @@ def stream_rag_answer(
     )
 
     db.add(assistant_message)
-
     db.commit()
 
 
@@ -209,9 +188,7 @@ def create_conversation(
     conversation = Conversation()
 
     db.add(conversation)
-
     db.commit()
-
     db.refresh(conversation)
 
     return conversation
